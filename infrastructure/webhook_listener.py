@@ -1,8 +1,8 @@
 import logging
 
-from flask import Flask, request, jsonify, Blueprint
+from flask import request, jsonify, Blueprint
 
-from application.port.input import ProcessDistributorEventUseCase
+from application.port.input.process_distributor_event_use_case import ProcessDistributorEventUseCase
 
 logger = logging.getLogger(__name__)
 

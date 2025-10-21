@@ -1,12 +1,17 @@
+import logging
+
 import requests
 from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 
-from application.port.input.ProcessDistributorEventUseCase import ProcessDistributorEventUseCase
+from application.port.input.process_distributor_event_use_case import ProcessDistributorEventUseCase
 from infrastructure.persistence.db_session import DBWorker
 from infrastructure.persistence.entity.feedback import Feedback
 from infrastructure.persistence.entity.message import Message
 from infrastructure.persistence.entity.sending import Sending
+
+
+logger = logging.getLogger(__name__)
 
 
 class ProcessDistributorEventService(ProcessDistributorEventUseCase):
@@ -38,14 +43,25 @@ class ProcessDistributorEventService(ProcessDistributorEventUseCase):
         data = event['data']
 
         with DBWorker() as db:
+            logger.debug(f"Got event: {event}")
             if event_type == "SESSION":
-                if data["sessionEventType"] in ["CREATED", "STARTED"]:
+                if data["sessionEventType"] in ["CREATED"]:
                     chat_id = int(data["session"]["chatId"])
                     self._send_message(db, chat_id)
             elif event_type == "FEEDBACK":
                 reply_to = int(data["replyTo"])
                 self._process_feedback(db, reply_to, data["feedback"])
-                self._send_message(db, int(data["feedback"]["chatId"]))
+                if data["session"] is not None:
+                    self._send_message(db, int(data["feedback"]["chatId"]))
+                else:
+                    self._send_to_distributor({
+                        "chatId": int(data["feedback"]["chatId"]),
+                        "content": {
+                            "type": "simple",
+                            "text": "Пока что на этом все, увидимся позже😅",
+                            "attachments": [],
+                        }
+                    })
 
     def _send_message(self, db: Session, chat_id: int):
         unanswered = db.scalars(
@@ -116,20 +132,12 @@ class ProcessDistributorEventService(ProcessDistributorEventUseCase):
             clear = True
 
         if sending is None:
-            self._send_to_distributor({
-                "chatId": int(feedback["chatId"]),
-                "content": {
-                    "type": "simple",
-                    "text": "Сообщение, на которое вы отвечаете, не было найдено :( Попробуйте еще раз",
-                    "attachments": [],
-                }
-            })
             return
 
         while sending.reminder_to is not None:
             sending = sending.reminder_to
 
-        if sending.message.buttons and not clear:
+        if sending.message.buttons and not clear and not sending.is_processed:
             self._clear_buttons(sending.chat_id, sending.distributor_id)
 
         sending.is_processed = True
