@@ -20,7 +20,7 @@ class ProcessDistributorEventService(ProcessDistributorEventUseCase):
         self.auth_token = auth_token
 
     def _send_to_distributor(self, data: dict):
-        response = requests.post(f"{self.distributor_url}/messages",
+        response = requests.post(f"{self.distributor_url}/interactions",
                                  json=data,
                                  headers={"Authorization": f"Bearer {self.auth_token}"})
         if response.status_code not in [200, 201]:
@@ -127,8 +127,8 @@ class ProcessDistributorEventService(ProcessDistributorEventUseCase):
 
         clear = False
 
-        if feedback["payload"]["type"] == "button":
-            self._clear_buttons(int(feedback["chatId"]), feedback["payload"]["replyTo"])
+        if feedback["payload"]["content"]["type"] == "button_click":
+            self._clear_buttons(int(feedback["chatId"]), feedback["payload"]["content"]["sourceInteractionId"])
             clear = True
 
         if sending is None:
@@ -142,7 +142,7 @@ class ProcessDistributorEventService(ProcessDistributorEventUseCase):
 
         sending.is_processed = True
 
-        feedback = Feedback(distributor_id=int(feedback["id"]), sending_id=sending.distributor_id)
+        feedback = Feedback(distributor_id=int(feedback["payload"]["id"]), sending_id=sending.distributor_id)
 
         db.add(feedback)
 
